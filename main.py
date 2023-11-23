@@ -65,7 +65,11 @@ def map_gesture_to_action():
         if current_gesture.startswith("Pointing_Up"):
             pyautogui.scroll(SCROLL_AMOUNT)  # Scroll up
         elif current_gesture.startswith("Closed_Fist"):
-            pyautogui.scroll(-SCROLL_AMOUNT)  # Scroll down        
+            pyautogui.scroll(-SCROLL_AMOUNT)  # Scroll down
+        elif current_gesture.startswith("Thumb_Up"):
+            pyautogui.hotkey('command', 'option', 'right')  # Next tab in browser
+        elif current_gesture.startswith("Victory"):
+            pyautogui.hotkey('command', 'option', 'left')  # Previous tab in browser
 
         last_gesture = current_gesture
         last_gesture_change_time = current_time
