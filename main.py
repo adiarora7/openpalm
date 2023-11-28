@@ -15,13 +15,18 @@ CAMERA_INDEX = 1 #0 for iphone and 1 for mac
 SCROLL_AMOUNT = 12
 GESTURE_COOLDOWN = 0.5
 MODEL_PATH = '/Users/adiarora/Downloads/gesture_recognizer.task'
+DEAD_ZONE_RADIUS = 10  # Dead zone radius, adjust as needed
+
 
 # Global Variables
 current_gesture = ""
 last_gesture = None
-last_gesture_change_time = time.time()
+last_gesture_change_time = time.time()  
+handedness = ""        
 frame_counter = 0
 roi_x, roi_y, roi_width, roi_height = 600, 150, 1280, 832
+current_mouse_x, current_mouse_y = 0, 0  # Current mouse position
+
 
 # Sub-rectangle coordinates within the ROI
 sub_roi_x, sub_roi_y = roi_x + 100, roi_y + 200  # Adjust as needed
@@ -54,34 +59,53 @@ def setup_camera():
 
 @safe_execute
 def print_result(result: GestureRecognizerResult, output_image: mp.Image, timestamp_ms: int):
-    """Processes and prints gesture recognition results."""
-    global current_gesture
+    """Processes and prints gesture recognition + handedness results."""
+    global current_gesture, handedness
 
-    print("Gesture Recognizer Results:", result)
+    # print("Gesture Recognizer Results:", result)
 
     if result.gestures:
         top_gesture = result.gestures[0][0]
         current_gesture = f"{top_gesture.category_name} ({top_gesture.score:.2f})"
+
+    if result.handedness:
+        top_hand = result.handedness[0][0]
+        if top_hand.index == 0:  # Index 0 represents left hand
+            handedness = "left"
+        elif top_hand.index == 1:  # Index 1 represents right hand
+            handedness = "right"
+    else:
+        handedness = "unknown"
+    
     return result
 
 
 @safe_execute
 def map_gesture_to_action():
     """Maps recognized gestures to corresponding actions."""
-    global last_gesture, last_gesture_change_time
+    global last_gesture, last_gesture_change_time, handedness
 
     current_time = time.time()
     if current_gesture != last_gesture and (current_time - last_gesture_change_time) > GESTURE_COOLDOWN:
-        if current_gesture.startswith("Pointing_Up"):
-            pyautogui.scroll(SCROLL_AMOUNT)  # Scroll up
-        elif current_gesture.startswith("Victory"):
-            pyautogui.scroll(-SCROLL_AMOUNT) # Scroll down
-        elif current_gesture.startswith("Closed_Fist"):
-            pyautogui.click() # Click
-        elif current_gesture.startswith("Thumb_Up"):
-            pyautogui.hotkey('command', 'option', 'right')  # Next tab in browser
-        elif current_gesture.startswith("ILoveYou"):
-            pyautogui.hotkey('command', 'option', 'left')  # Previous tab in browser
+        if handedness == "right":
+            if current_gesture.startswith("Pointing_Up"):
+                pyautogui.scroll(SCROLL_AMOUNT)  # Scroll up
+            elif current_gesture.startswith("Victory"):
+                pyautogui.scroll(-SCROLL_AMOUNT) # Scroll down
+            elif current_gesture.startswith("Closed_Fist"):
+                pyautogui.click() # Click
+            elif current_gesture.startswith("Thumb_Up"):
+                pyautogui.hotkey('command', 'option', 'right') # Next tab in browser
+            elif current_gesture.startswith("ILoveYou"):
+                pyautogui.hotkey('command', 'option', 'left') # Previous tab in browser
+
+        elif handedness == "left":
+            if current_gesture.startswith("Pointing_Up"):
+                pyautogui.hotkey('ctrl', 'right') # Next Desktop
+            elif current_gesture.startswith("Victory"):
+                pyautogui.hotkey('ctrl', 'left') # Previous Desktop
+            elif current_gesture.startswith("Closed_Fist"):
+                pyautogui.hotkey('command', 'w') # Close Tab
 
         last_gesture = current_gesture
         last_gesture_change_time = current_time
@@ -98,11 +122,12 @@ def draw_frame(frame, hand_results, mp_drawing, mp_hands):
             mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
     cv2.putText(frame, current_gesture, (roi_x, roi_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 3, (0, 128, 0), 8, cv2.LINE_AA) 
 
+
 @safe_execute
 def process_frame(cap, recognizer, hands, mp_drawing, mp_hands):
     """Processes each frame for gesture recognition and action mapping."""
 
-    global frame_counter
+    global frame_counter, current_mouse_x, current_mouse_y, handedness
 
     ret, frame = cap.read()
     if not ret:
@@ -123,19 +148,22 @@ def process_frame(cap, recognizer, hands, mp_drawing, mp_hands):
 
     if hand_results.multi_hand_landmarks:
         for hand_landmarks in hand_results.multi_hand_landmarks:
-            # Assuming the base of the palm is the 0th landmark
-            palm_base = hand_landmarks.landmark[0]
-            palm_x = int(palm_base.x * roi_width) + roi_x
-            palm_y = int(palm_base.y * roi_height) + roi_y
 
-            # Check if the base of the palm is within the sub-rectangle
-            if (sub_roi_x <= palm_x <= sub_roi_x + sub_roi_width and
-                sub_roi_y <= palm_y <= sub_roi_y + sub_roi_height):
-                # Map the position within the sub-rectangle to screen coordinates
-                mapped_x = int((palm_x - sub_roi_x) / sub_roi_width * screen_width)
-                mapped_y = int((palm_y - sub_roi_y) / sub_roi_height * screen_height)
-                # Move the mouse cursor
-                pyautogui.moveTo(mapped_x, mapped_y)
+            if handedness == "right":
+
+                # Assuming the base of the palm is the 0th landmark
+                palm_base = hand_landmarks.landmark[0]
+                palm_x = int(palm_base.x * roi_width) + roi_x
+                palm_y = int(palm_base.y * roi_height) + roi_y
+
+                new_mouse_x = int((palm_x - sub_roi_x) / sub_roi_width * screen_width)
+                new_mouse_y = int((palm_y - sub_roi_y) / sub_roi_height * screen_height)
+
+                # Check if new mouse position is outside the dead zone
+                if ((new_mouse_x - current_mouse_x) ** 2 + (new_mouse_y - current_mouse_y) ** 2) ** 0.5 > DEAD_ZONE_RADIUS:
+                    current_mouse_x, current_mouse_y = new_mouse_x, new_mouse_y
+                    pyautogui.moveTo(current_mouse_x, current_mouse_y)
+
 
 
     # Draw the hand landmarks and gesture names
@@ -153,9 +181,6 @@ def process_frame(cap, recognizer, hands, mp_drawing, mp_hands):
 
     cv2.imshow('Camera Feed', frame)
     return True
-
-
-
 
 
 @safe_execute
