@@ -11,7 +11,7 @@ GestureRecognizerResult = mp.tasks.vision.GestureRecognizerResult
 VisionRunningMode = mp.tasks.vision.RunningMode
 
 # Configurable Parameters
-CAMERA_INDEX = 1 #0 for iphone and 1 for mac
+CAMERA_INDEX = 1 # 0 for iphone and 1 for mac
 SCROLL_AMOUNT = 12
 GESTURE_COOLDOWN = 0.5
 MODEL_PATH = '/Users/adiarora/Downloads/gesture_recognizer.task'
@@ -24,13 +24,15 @@ last_gesture = None
 last_gesture_change_time = time.time()  
 handedness = ""        
 frame_counter = 0
-roi_x, roi_y, roi_width, roi_height = 600, 150, 1280, 832
+
+
+# Rectangle for gesture detection
+roi_x, roi_y, roi_width, roi_height = 600, 150, 1280, 832 # Coordinates + Dimensions
 current_mouse_x, current_mouse_y = 0, 0  # Current mouse position
 
-
-# Sub-rectangle coordinates within the ROI
-sub_roi_x, sub_roi_y = roi_x + 100, roi_y + 200  # Adjust as needed
-sub_roi_width, sub_roi_height = 1080, 632  # Adjust as needed
+# Sub-rectangle coordinates within ROI for palm detection
+sub_roi_x, sub_roi_y = roi_x + 100, roi_y + 200  # Coordinates
+sub_roi_width, sub_roi_height = 1080, 632  # Dimensions
 
 # Screen dimensions
 screen_width, screen_height = pyautogui.size()
@@ -80,12 +82,14 @@ def print_result(result: GestureRecognizerResult, output_image: mp.Image, timest
     return result
 
 
+
 @safe_execute
 def map_gesture_to_action():
     """Maps recognized gestures to corresponding actions."""
     global last_gesture, last_gesture_change_time, handedness
 
     current_time = time.time()
+
     if current_gesture != last_gesture and (current_time - last_gesture_change_time) > GESTURE_COOLDOWN:
         if handedness == "right":
             if current_gesture.startswith("Pointing_Up"):
@@ -110,9 +114,13 @@ def map_gesture_to_action():
         last_gesture = current_gesture
         last_gesture_change_time = current_time
 
+
+
 @safe_execute
-def draw_frame(frame, hand_results, mp_drawing, mp_hands):
+def draw_frame(frame, hand_results, mp_drawing, mp_hands, fps):
     """Draws hand landmarks and gesture names on the frame."""
+    global current_gesture, handedness
+
     if hand_results.multi_hand_landmarks:
         for hand_landmarks in hand_results.multi_hand_landmarks:
             # Adjust the hand landmarks to the ROI coordinates
@@ -120,7 +128,19 @@ def draw_frame(frame, hand_results, mp_drawing, mp_hands):
                 landmark.x = (landmark.x * roi_width / frame.shape[1]) + (roi_x / frame.shape[1])
                 landmark.y = (landmark.y * roi_height / frame.shape[0]) + (roi_y / frame.shape[0])
             mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
-    cv2.putText(frame, current_gesture, (roi_x, roi_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 3, (0, 128, 0), 8, cv2.LINE_AA) 
+    #cv2.putText(frame, current_gesture, (roi_x, roi_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 3, (0, 128, 0), 8, cv2.LINE_AA) 
+
+    # Draw text for FPS, Hand, Gesture, and Score
+    gesture_name, gesture_score = current_gesture.split(' ')[0], current_gesture.split(' ')[1] if ' ' in current_gesture else '(N/A)'
+    info_texts = [
+        f"FPS: {fps:.2f}",
+        f"Hand: {handedness.capitalize()}",
+        f"Gesture: {gesture_name}",
+        f"Score: {gesture_score}"
+    ]
+    for i, text in enumerate(info_texts):
+        cv2.putText(frame, text, (10, 30 * (i + 1)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,128,0), 2, cv2.LINE_AA)
+
 
 
 @safe_execute
@@ -128,6 +148,8 @@ def process_frame(cap, recognizer, hands, mp_drawing, mp_hands):
     """Processes each frame for gesture recognition and action mapping."""
 
     global frame_counter, current_mouse_x, current_mouse_y, handedness
+
+    frame_process_start = time.time()
 
     ret, frame = cap.read()
     if not ret:
@@ -163,11 +185,13 @@ def process_frame(cap, recognizer, hands, mp_drawing, mp_hands):
                 if ((new_mouse_x - current_mouse_x) ** 2 + (new_mouse_y - current_mouse_y) ** 2) ** 0.5 > DEAD_ZONE_RADIUS:
                     current_mouse_x, current_mouse_y = new_mouse_x, new_mouse_y
                     pyautogui.moveTo(current_mouse_x, current_mouse_y)
-
-
+    
+    frame_process_end = time.time()  # End time after processing this frame
+    frame_time = frame_process_end - frame_process_start
+    fps = 1 / frame_time if frame_time > 0 else 0
 
     # Draw the hand landmarks and gesture names
-    draw_frame(frame, hand_results, mp_drawing, mp_hands)
+    draw_frame(frame, hand_results, mp_drawing, mp_hands, fps)
 
     # Prepare the cropped frame for gesture recognition
     roi_frame_resized = cv2.resize(roi_frame, (frame.shape[1], frame.shape[0]))
@@ -183,12 +207,14 @@ def process_frame(cap, recognizer, hands, mp_drawing, mp_hands):
     return True
 
 
+
 @safe_execute
 def cleanup_resources(cap, hands):
     """Releases camera and MediaPipe resources."""
     cap.release()
     cv2.destroyAllWindows()
     hands.close()
+
 
 
 def main():
