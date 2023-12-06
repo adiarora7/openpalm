@@ -4,7 +4,7 @@ Open Palm translates hand gestures into computer commands allowing for a touchle
 ![Demo of using your hands to move and click]()*Mouse movement & click*
 
 ## How it works
-![Logic]()
+![Logic](./assets/logic.png)
 
 1. Webcam (or iPhone camera through continuity camera!) is used for input.
 2. Each frame is then processed and checked for 
@@ -13,6 +13,9 @@ Open Palm translates hand gestures into computer commands allowing for a touchle
     - position (for mouse movement)
     - gesture recognition
 3. The recognized gestures are then mapped to certain computer commands.(click, scroll, etc.)
+
+Currently supported actions:
+- click, scroll up, scroll down, next tab, previous tab, next desktop, previous desktop, close tab
 
 Libraries used: OpenCV, MediaPipe and PyAutoGui  
 
